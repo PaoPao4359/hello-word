@@ -1,8 +1,11 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
+from tkcalendar import DateEntry
 import json
 import os
 from datetime import datetime
+from plyer import notification
+import threading
 
 # File to store tasks
 TASKS_FILE = 'tasks.json'
@@ -23,6 +26,7 @@ def save_tasks(tasks):
 def add_task():
     task = task_entry.get()
     due_date = due_date_entry.get()
+    category = category_combobox.get()
     if task.strip() == "":
         messagebox.showwarning("Warning", "Task cannot be empty!")
         return
@@ -31,10 +35,10 @@ def add_task():
     except ValueError:
         messagebox.showwarning("Warning", "Invalid date format! Use YYYY-MM-DD.")
         return
-    tasks.append({"task": task, "completed": False, "due_date": due_date})
+    tasks.append({"task": task, "completed": False, "due_date": due_date, "category": category})
     task_entry.delete(0, tk.END)
-    due_date_entry.delete(0, tk.END)
     update_task_list()
+    set_reminder(task, due_date)
 
 # Update the displayed task list
 def update_task_list():
@@ -43,7 +47,23 @@ def update_task_list():
         display_text = "[X] " + task["task"] if task["completed"] else task["task"]
         if task["due_date"]:
             display_text += f" (Due: {task['due_date']})"
+        display_text += f" [Category: {task['category']}]"
         task_list.insert(tk.END, display_text)
+
+# Set a reminder for the task
+def set_reminder(task, due_date):
+    if due_date:
+        due_date_obj = datetime.strptime(due_date, "%Y-%m-%d")
+        reminder_time = (due_date_obj - datetime.now()).total_seconds()
+        if reminder_time > 0:
+            threading.Timer(reminder_time, send_notification, args=[task]).start()
+
+def send_notification(task):
+    notification.notify(
+        title="Task Reminder",
+        message=f"Reminder: {task} is due!",
+        app_name="To-Do List Manager"
+    )
 
 # Toggle task completion
 def toggle_task_completion():
@@ -69,20 +89,6 @@ def sort_tasks_by_due_date():
     tasks.sort(key=lambda x: x["due_date"] or "")
     update_task_list()
 
-# Start drag-and-drop
-def start_drag(event):
-    global drag_start_index
-    drag_start_index = task_list.nearest(event.y)
-
-# Perform drag-and-drop
-def perform_drag(event):
-    global drag_start_index
-    drag_end_index = task_list.nearest(event.y)
-    if drag_start_index != drag_end_index:
-        tasks.insert(drag_end_index, tasks.pop(drag_start_index))
-        update_task_list()
-        drag_start_index = drag_end_index
-
 # Initialize the main application window
 root = tk.Tk()
 root.title("To-Do List Manager")
@@ -91,9 +97,12 @@ root.title("To-Do List Manager")
 task_entry = tk.Entry(root, width=50)
 task_entry.pack(pady=10)
 
-due_date_entry = tk.Entry(root, width=50)
+due_date_entry = DateEntry(root, width=48, background='darkblue', foreground='white', borderwidth=2)
 due_date_entry.pack(pady=5)
-due_date_entry.insert(0, "Enter due date (YYYY-MM-DD)")
+
+category_combobox = ttk.Combobox(root, values=["Work", "Personal", "Shopping", "Others"], width=47)
+category_combobox.set("Select Category")
+category_combobox.pack(pady=5)
 
 add_button = tk.Button(root, text="Add Task", command=add_task)
 add_button.pack(pady=5)
@@ -121,9 +130,6 @@ def on_closing():
 
 root.protocol("WM_DELETE_WINDOW", on_closing)
 
-# Bind drag-and-drop events
-task_list.bind("<Button-1>", start_drag)
-task_list.bind("<B1-Motion>", perform_drag)
-
 # Start the GUI event loop
 root.mainloop()
+
